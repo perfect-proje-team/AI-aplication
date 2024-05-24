@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+  labels:
+    name: frontend-svc
+spec:
+  selector:
+    name: frontend-svc
+  ports:
+    - port: 80
+      targetPort: 80
+  type: NodePort
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-svc
+  labels:
+    name: frontend-svc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: frontend-svc
+  template:
+    metadata:
+      labels:
+        name: frontend-svc
+    spec:
+      containers:
+        - image: frontend:dev
+          name: frontend-svc
+          ports:
+            - containerPort: 80
+      restartPolicy: Always
