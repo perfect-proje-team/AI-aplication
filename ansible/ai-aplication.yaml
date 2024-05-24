@@ -1,0 +1,69 @@
+- name: install docker and config
+  hosts: all
+  become: true
+  tasks:
+    - name: Update yum cache (for Amazon Linux)
+      ansible.builtin.yum:
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+    
+    - name: Install Git
+      ansible.builtin.yum:
+        name: git
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Update all packages
+      ansible.builtin.yum:
+        name: '*'
+        state: latest
+
+    - name: Remove docker if installed from CentOS repo
+      ansible.builtin.yum:
+        name:
+          - docker
+          - docker-client
+          - docker-client-latest
+          - docker-common
+          - docker-latest
+          - docker-latest-logrotate
+          - docker-logrotate
+          - docker-engine
+        state: removed
+
+    - name: Install yum utils
+      ansible.builtin.yum:
+        name: "{{ item }}"
+        state: latest
+      with_items:
+        - yum-utils
+        - device-mapper-persistent-data
+        - lvm2
+        - unzip
+
+    - name: Add Docker repo
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+
+    - name: Install Docker
+      ansible.builtin.package:
+        name: docker
+        state: latest
+
+    - name: Add user ec2-user to docker group
+      ansible.builtin.user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+    - name: Start Docker service
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Clone AI application repository
+      ansible.builtin.git:
+        repo: "https://github.com/Mecit-tuksoy/ai-aplication.git"
+        dest: "/home/ec2-user/ai-application"
