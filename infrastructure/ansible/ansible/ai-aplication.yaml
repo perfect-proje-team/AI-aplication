@@ -1,0 +1,168 @@
+- name: Common setup for all servers
+  hosts: all
+  become: true
+  tasks:
+    - name: Update yum cache (for Amazon Linux)
+      ansible.builtin.yum:
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+    
+    - name: Install Git
+      ansible.builtin.yum:
+        name: git
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Update all packages
+      ansible.builtin.yum:
+        name: '*'
+        state: latest
+
+    - name: Remove docker if installed from CentOS repo
+      ansible.builtin.yum:
+        name:
+          - docker
+          - docker-client
+          - docker-client-latest
+          - docker-common
+          - docker-latest
+          - docker-latest-logrotate
+          - docker-logrotate
+          - docker-engine
+        state: removed
+
+    - name: Install yum utils
+      ansible.builtin.yum:
+        name: "{{ item }}"
+        state: latest
+      with_items:
+        - yum-utils
+        - device-mapper-persistent-data
+        - lvm2
+        - unzip
+
+    - name: Add Docker repo
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+
+    - name: Install Docker
+      ansible.builtin.package:
+        name: docker
+        state: latest
+
+    - name: Add user ec2-user to docker group
+      ansible.builtin.user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+    - name: Start Docker service
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Ensure AI application directory is clean
+      ansible.builtin.file:
+        path: /home/ec2-user/ai-application
+        state: absent
+        
+    - name: Clone AI application repository
+      ansible.builtin.git:
+        repo: "https://github.com/Mecit-tuksoy/ai-aplication.git"
+        dest: "/home/ec2-user/ai-application"
+
+
+- name: Configure MySQL server
+  hosts: mysql
+  become: true
+  vars_files:
+    - vault.yml
+  tasks:
+    - name: Run MySQL container
+      ansible.builtin.docker_container:
+        name: deid_db
+        image: mysql:5.7
+        state: started
+        ports:
+          - "3306:3306"
+        env:
+          MYSQL_ROOT_PASSWORD: "{{ MYSQL_ROOT_PASSWORD }}"
+          MYSQL_USER: "{{ MYSQL_USER }}"
+          MYSQL_PASSWORD: "{{ MYSQL_PASSWORD }}"
+          MYSQL_DATABASE: "{{ MYSQL_DATABASE }}"
+        volumes:
+          - dbdata:/var/lib/mysql
+        restart_policy: always
+
+
+- name: Configure backend application
+  hosts: backend
+  become: true
+  tasks:
+    - name: Copy ip.txt to backend
+      ansible.builtin.copy:
+        src: /home/ec2-user/ip.txt
+        dest: /home/ec2-user/ip.txt
+        mode: '0644'
+
+    - name: Replace deid_db with actual MySQL IP in app.py
+      ansible.builtin.shell: |
+        ip=$(grep "mysql public ip=" /home/ec2-user/ip.txt | awk -F'=' '{print $2}' | tr -d '[:space:]')
+        sed -i "s/app.config\['MYSQL_DATABASE_HOST'\] = \"deid_db\"/app.config\['MYSQL_DATABASE_HOST'\] = \"$ip\"/" /home/ec2-user/ai-application/backend/app.py
+
+
+    # - name: Replace deid_db with actual MySQL IP in app.py
+    #   ansible.builtin.command: >
+    #     sed -i 's/deid_db/$(grep -oP "mysql public ip=\K[0-9.]+$" /home/ec2-user/ip.txt)/' /home/ec2-user/ai-application/backend/app.py
+
+
+    - name: Build backend Docker image
+      ansible.builtin.command:
+        cmd: docker build -t backend /home/ec2-user/ai-application/backend
+      args:
+        chdir: /home/ec2-user/ai-application/backend
+
+    - name: Run backend container
+      ansible.builtin.docker_container:
+        name: backend
+        image: backend
+        state: started
+        ports:
+          - "5000:5000"
+        restart_policy: always
+
+
+
+
+
+- name: Configure frontend application
+  hosts: frontend
+  become: true
+  tasks:
+    - name: Copy ip.txt to frontend
+      ansible.builtin.copy:
+        src: /home/ec2-user/ip.txt
+        dest: /home/ec2-user/ip.txt
+        mode: '0644'
+
+    - name: Replace localhost with actual backend IP in index.html
+      ansible.builtin.shell: |
+        backend_ip=$(grep "backend public ip=" /home/ec2-user/ip.txt | awk -F'=' '{print $2}' | tr -d '[:space:]')
+        sed -i "s|localhost|$backend_ip|" /home/ec2-user/ai-application/frontend/index.html
+
+    - name: Build frontend Docker image
+      ansible.builtin.command:
+        cmd: docker build -t frontend /home/ec2-user/ai-application/frontend
+      args:
+        chdir: /home/ec2-user/ai-application/frontend
+
+    - name: Run frontend container
+      ansible.builtin.docker_container:
+        name: frontend
+        image: frontend
+        state: started
+        ports:
+          - "80:80"
+        restart_policy: always

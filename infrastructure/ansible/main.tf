@@ -36,7 +36,7 @@ resource "aws_instance" "backend" {
   key_name               = var.mykey
   vpc_security_group_ids = [aws_security_group.tf-sec-gr.id]
   tags = {
-    Name = var.tags[3]-local.user
+    Name = "${var.tags[3]}-${local.user}"
   }
 
   root_block_device {
@@ -104,9 +104,20 @@ resource "null_resource" "config" {
   }
 
   provisioner "file" {
-    source = "./ansible.cfg"
-    destination = "/home/ec2-user/ansible.cfg"
+    source = "./.ansible.cfg"
+    destination = "/home/ec2-user/.ansible.cfg"
   }
+
+  provisioner "local-exec" {
+    command = "tar -czf ansible.tar.gz -C ./ansible ."
+}
+
+  provisioner "file" {
+    source      = "ansible.tar.gz"
+    destination = "/home/ec2-user/ansible.tar.gz"
+}
+
+
 
   provisioner "file" {
     # Do not forget to define your key file path correctly!
@@ -124,7 +135,12 @@ resource "null_resource" "config" {
       "echo backend ansible_host=${aws_instance.backend[0].private_ip} ansible_ssh_private_key_file=~/${var.mykey}.pem ansible_user=ec2-user >> inventory.txt",
       "echo [Mysqlservers] >> inventory.txt",
       "echo mysql ansible_host=${aws_instance.nodes[2].private_ip} ansible_ssh_private_key_file=~/${var.mykey}.pem ansible_user=ec2-user >> inventory.txt",
-      "chmod 400 ${var.mykey}.pem"
+      "chmod 400 ${var.mykey}.pem",
+      "echo frontend private ip=${aws_instance.nodes[1].private_ip} >> ip.txt",
+      "echo mysql private ip=${aws_instance.nodes[2].private_ip} >> ip.txt",
+      "echo mysql public ip=${aws_instance.nodes[2].public_ip} >> ip.txt",
+      "echo backend public ip=${aws_instance.backend[0].public_ip} >> ip.txt",
+      "echo backend private ip=${aws_instance.backend[0].private_ip} >> ip.txt",
     ]
   }
 }
