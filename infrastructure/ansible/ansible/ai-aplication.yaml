@@ -113,10 +113,6 @@
         sed -i "s/app.config\['MYSQL_DATABASE_HOST'\] = \"deid_db\"/app.config\['MYSQL_DATABASE_HOST'\] = \"$ip\"/" /home/ec2-user/ai-application/backend/app.py
 
 
-    # - name: Replace deid_db with actual MySQL IP in app.py
-    #   ansible.builtin.command: >
-    #     sed -i 's/deid_db/$(grep -oP "mysql public ip=\K[0-9.]+$" /home/ec2-user/ip.txt)/' /home/ec2-user/ai-application/backend/app.py
-
 
     - name: Build backend Docker image
       ansible.builtin.command:
@@ -151,6 +147,9 @@
       ansible.builtin.shell: |
         backend_ip=$(grep "backend public ip=" /home/ec2-user/ip.txt | awk -F'=' '{print $2}' | tr -d '[:space:]')
         sed -i "s|localhost|$backend_ip|" /home/ec2-user/ai-application/frontend/index.html
+
+       # grep "backend public ip=" /home/ec2-user/ip.txt | awk -F'=' 'NR==2 {print $2}' | tr -d '[:space:]'
+
 
     - name: Build frontend Docker image
       ansible.builtin.command:

@@ -117,8 +117,6 @@ resource "null_resource" "config" {
     destination = "/home/ec2-user/ansible.tar.gz"
 }
 
-
-
   provisioner "file" {
     # Do not forget to define your key file path correctly!
     source = "~/.ssh/${var.mykey}.pem"
